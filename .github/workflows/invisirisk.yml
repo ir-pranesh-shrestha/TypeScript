@@ -1,4 +1,4 @@
-name: JavaScript Project
+name: TypeScript x InvisiRisk
 
 on:
   workflow_dispatch:
