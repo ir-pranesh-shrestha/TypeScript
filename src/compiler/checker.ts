@@ -1839,6 +1839,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
         getNullType: () => nullType,
         getESSymbolType: () => esSymbolType,
         getNeverType: () => neverType,
+        getNonPrimitiveType: () => nonPrimitiveType,
         getOptionalType: () => optionalType,
         getPromiseType: () => getGlobalPromiseType(/*reportErrors*/ false),
         getPromiseLikeType: () => getGlobalPromiseLikeType(/*reportErrors*/ false),
@@ -23326,6 +23327,24 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                         if (result &= isRelatedTo((source as SubstitutionType).constraint, (target as SubstitutionType).constraint, RecursionFlags.Both, /*reportErrors*/ false)) {
                             return result;
                         }
+                    }
+                }
+                if (sourceFlags & TypeFlags.TemplateLiteral) {
+                    if (arrayIsEqualTo((source as TemplateLiteralType).texts, (target as TemplateLiteralType).texts)) {
+                        const sourceTypes = (source as TemplateLiteralType).types;
+                        const targetTypes = (target as TemplateLiteralType).types;
+                        result = Ternary.True;
+                        for (let i = 0; i < sourceTypes.length; i++) {
+                            if (!(result &= isRelatedTo(sourceTypes[i], targetTypes[i], RecursionFlags.Both, /*reportErrors*/ false))) {
+                                break;
+                            }
+                        }
+                        return result;
+                    }
+                }
+                if (sourceFlags & TypeFlags.StringMapping) {
+                    if ((source as StringMappingType).symbol === (target as StringMappingType).symbol) {
+                        return isRelatedTo((source as StringMappingType).type, (target as StringMappingType).type, RecursionFlags.Both, /*reportErrors*/ false);
                     }
                 }
                 if (!(sourceFlags & TypeFlags.Object)) {
