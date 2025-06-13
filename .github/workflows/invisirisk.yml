@@ -35,9 +35,3 @@ jobs:
         uses: invisirisk/pse-action@test
         with:
           cleanup: "true"
-          
-      - name: Gather Job status
-        if: always()
-        uses: invisirisk/pse-action@test
-        with:
-          get_jobs: "true"
