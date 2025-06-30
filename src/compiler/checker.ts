@@ -25340,9 +25340,19 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
         // right is a supertype.
         const superTypeOrUnion = literalTypesWithSameBaseType(primaryTypes) ?
             getUnionType(primaryTypes) :
-            reduceLeft(primaryTypes, (s, t) => isTypeSubtypeOf(s, t) ? t : s)!;
+            getSingleCommonSupertype(primaryTypes);
         // Add any nullable types that occurred in the candidates back to the result.
         return primaryTypes === types ? superTypeOrUnion : getNullableType(superTypeOrUnion, getCombinedTypeFlags(types) & TypeFlags.Nullable);
+    }
+
+    function getSingleCommonSupertype(types: Type[]) {
+        // First, find the leftmost type for which no type to the right is a strict supertype, and if that
+        // type is a strict supertype of all other candidates, return it. Otherwise, return the leftmost type
+        // for which no type to the right is a (regular) supertype.
+        const candidate = reduceLeft(types, (s, t) => isTypeStrictSubtypeOf(s, t) ? t : s)!;
+        return every(types, t => t === candidate || isTypeStrictSubtypeOf(t, candidate)) ?
+            candidate :
+            reduceLeft(types, (s, t) => isTypeSubtypeOf(s, t) ? t : s)!;
     }
 
     // Return the leftmost type for which no type to the right is a subtype.
@@ -36404,7 +36414,12 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
         // reorderCandidates fills up the candidates array directly
         reorderCandidates(signatures, candidates, callChainFlags);
         if (!isJsxOpenFragment) {
-            Debug.assert(candidates.length, "Revert #54442 and add a testcase with whatever triggered this");
+            if (!candidates.length) {
+                if (reportErrors) {
+                    diagnostics.add(getDiagnosticForCallNode(node, Diagnostics.Call_target_does_not_contain_any_signatures));
+                }
+                return resolveErrorCall(node);
+            }
         }
         const args = getEffectiveCallArguments(node);
 
@@ -53029,7 +53044,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
             if (languageVersion < ScriptTarget.ES2015 && isPrivateIdentifier(node.name)) {
                 return grammarErrorOnNode(node.name, Diagnostics.Private_identifiers_are_only_available_when_targeting_ECMAScript_2015_and_higher);
             }
-            if (languageVersion < ScriptTarget.ES2015 && isAutoAccessorPropertyDeclaration(node)) {
+            if (languageVersion < ScriptTarget.ES2015 && isAutoAccessorPropertyDeclaration(node) && !(node.flags & NodeFlags.Ambient)) {
                 return grammarErrorOnNode(node.name, Diagnostics.Properties_with_the_accessor_modifier_are_only_available_when_targeting_ECMAScript_2015_and_higher);
             }
             if (isAutoAccessorPropertyDeclaration(node) && checkGrammarForInvalidQuestionMark(node.questionToken, Diagnostics.An_accessor_property_cannot_be_declared_optional)) {
@@ -53178,7 +53193,8 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
         const literalType = isLiteralTypeNode(node.parent) ||
             isPrefixUnaryExpression(node.parent) && isLiteralTypeNode(node.parent.parent);
         if (!literalType) {
-            if (languageVersion < ScriptTarget.ES2020) {
+            // Don't error on BigInt literals in ambient contexts
+            if (!(node.flags & NodeFlags.Ambient) && languageVersion < ScriptTarget.ES2020) {
                 if (grammarErrorOnNode(node, Diagnostics.BigInt_literals_are_not_available_when_targeting_lower_than_ES2020)) {
                     return true;
                 }
