@@ -1531,7 +1531,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
     var noImplicitThis = getStrictOptionValue(compilerOptions, "noImplicitThis");
     var useUnknownInCatchVariables = getStrictOptionValue(compilerOptions, "useUnknownInCatchVariables");
     var exactOptionalPropertyTypes = compilerOptions.exactOptionalPropertyTypes;
-    var noUncheckedSideEffectImports = !!compilerOptions.noUncheckedSideEffectImports;
+    var noUncheckedSideEffectImports = compilerOptions.noUncheckedSideEffectImports !== false;
 
     var checkBinaryExpression = createCheckBinaryExpression();
     var emitResolver = createResolver();
@@ -4684,9 +4684,9 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
         }
     }
 
-    function resolveExternalModuleName(location: Node, moduleReferenceExpression: Expression, ignoreErrors?: boolean): Symbol | undefined {
+    function resolveExternalModuleName(location: Node, moduleReferenceExpression: Expression, ignoreErrors?: boolean, errorMessage?: DiagnosticMessage): Symbol | undefined {
         const isClassic = getEmitModuleResolutionKind(compilerOptions) === ModuleResolutionKind.Classic;
-        const errorMessage = isClassic ?
+        errorMessage ??= isClassic ?
             Diagnostics.Cannot_find_module_0_Did_you_mean_to_set_the_moduleResolution_option_to_nodenext_or_to_add_aliases_to_the_paths_option
             : Diagnostics.Cannot_find_module_0_or_its_corresponding_type_declarations;
         return resolveExternalModuleNameWorker(location, moduleReferenceExpression, ignoreErrors ? undefined : errorMessage, ignoreErrors);
@@ -21504,7 +21504,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                         let issuedElaboration = false;
                         if (!targetProp) {
                             const indexInfo = getApplicableIndexInfo(target, nameType);
-                            if (indexInfo && indexInfo.declaration && !getSourceFileOfNode(indexInfo.declaration).hasNoDefaultLib) {
+                            if (indexInfo && indexInfo.declaration && !host.isSourceFileDefaultLibrary(getSourceFileOfNode(indexInfo.declaration))) {
                                 issuedElaboration = true;
                                 addRelatedInfo(reportedDiag, createDiagnosticForNode(indexInfo.declaration, Diagnostics.The_expected_type_comes_from_this_index_signature));
                             }
@@ -21512,7 +21512,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
 
                         if (!issuedElaboration && (targetProp && length(targetProp.declarations) || target.symbol && length(target.symbol.declarations))) {
                             const targetNode = targetProp && length(targetProp.declarations) ? targetProp.declarations![0] : target.symbol.declarations![0];
-                            if (!getSourceFileOfNode(targetNode).hasNoDefaultLib) {
+                            if (!host.isSourceFileDefaultLibrary(getSourceFileOfNode(targetNode))) {
                                 addRelatedInfo(
                                     reportedDiag,
                                     createDiagnosticForNode(
@@ -24457,16 +24457,13 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                 }
                 return Ternary.False;
             }
-            if (isObjectLiteralType(target)) {
+            if (getObjectFlags(target) & ObjectFlags.FreshLiteral) {
                 for (const sourceProp of excludeProperties(getPropertiesOfType(source), excludedProperties)) {
                     if (!getPropertyOfObjectType(target, sourceProp.escapedName)) {
-                        const sourceType = getTypeOfSymbol(sourceProp);
-                        if (!(sourceType.flags & TypeFlags.Undefined)) {
-                            if (reportErrors) {
-                                reportError(Diagnostics.Property_0_does_not_exist_on_type_1, symbolToString(sourceProp), typeToString(target));
-                            }
-                            return Ternary.False;
+                        if (reportErrors) {
+                            reportError(Diagnostics.Property_0_does_not_exist_on_type_1, symbolToString(sourceProp), typeToString(target));
                         }
+                        return Ternary.False;
                     }
                 }
             }
@@ -48516,7 +48513,7 @@ export function createTypeChecker(host: TypeCheckerHost): TypeChecker {
                 }
             }
             else if (noUncheckedSideEffectImports && !importClause) {
-                void resolveExternalModuleName(node, node.moduleSpecifier);
+                void resolveExternalModuleName(node, node.moduleSpecifier, /*ignoreErrors*/ undefined, Diagnostics.Cannot_find_module_or_type_declarations_for_side_effect_import_of_0);
             }
         }
         checkImportAttributes(node);
